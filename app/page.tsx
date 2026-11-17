@@ -1,69 +1,94 @@
-import Image from "next/image";
+'use client';
+import Link from 'next/link';
+import { inr } from '@/lib/format';
+import { useApi } from '@/lib/hooks';
+import type { BranchSummary, DashboardStats, MonthlyVolume, TopCustomer } from '@/lib/types';
+import { Async, Card, EmptyRow, PageHeader, Stat, Table, td } from '@/components/ui';
 
-export default function Home() {
+export default function DashboardPage() {
+  const stats = useApi<DashboardStats>('/api/reports/dashboard');
+  const branches = useApi<BranchSummary[]>('/api/reports/branch-summary');
+  const top = useApi<TopCustomer[]>('/api/reports/top-customers?limit=5');
+  const monthly = useApi<MonthlyVolume[]>('/api/reports/monthly-volume');
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <>
+      <PageHeader title="Dashboard" subtitle="Live numbers straight from PostgreSQL views and aggregate queries" />
+
+      <Async state={stats}>
+        {(s) => (
+          <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-6">
+            <Stat label="Customers" value={s.customers} />
+            <Stat label="Open accounts" value={s.accounts} />
+            <Stat label="Total deposits" value={inr(s.total_deposits)} />
+            <Stat label="Active loans" value={s.active_loans} />
+            <Stat label="Pending loans" value={s.pending_loans} />
+            <Stat label="Txns today" value={s.transactions_today} />
+          </div>
+        )}
+      </Async>
+
+      <div className="grid gap-6 2xl:grid-cols-2">
+        <Card title="Branch summary (vw_branch_summary)">
+          <Async state={branches}>
+            {(rows) => (
+              <Table headers={['Branch', 'Accounts', 'Deposits', 'Active loans', 'Loan principal']}>
+                {rows.length === 0 && <EmptyRow cols={5} />}
+                {rows.map((b) => (
+                  <tr key={b.branch_id}>
+                    <td className={td}>{b.branch_name}<div className="text-xs text-slate-400">{b.city}</div></td>
+                    <td className={td}>{b.total_accounts}</td>
+                    <td className={td}>{inr(b.total_deposits)}</td>
+                    <td className={td}>{b.active_loans}</td>
+                    <td className={td}>{inr(b.loan_principal)}</td>
+                  </tr>
+                ))}
+              </Table>
+            )}
+          </Async>
+        </Card>
+
+        <Card title="Top customers by balance (window function: DENSE_RANK)">
+          <Async state={top}>
+            {(rows) => (
+              <Table headers={['Rank', 'Customer', 'Accounts', 'Total balance']}>
+                {rows.length === 0 && <EmptyRow cols={4} />}
+                {rows.map((c) => (
+                  <tr key={c.customer_id}>
+                    <td className={td}>#{c.rank}</td>
+                    <td className={td}><Link className="text-indigo-600 hover:underline" href={`/customers/${c.customer_id}`}>{c.full_name}</Link></td>
+                    <td className={td}>{c.accounts}</td>
+                    <td className={td}>{inr(c.total_balance)}</td>
+                  </tr>
+                ))}
+              </Table>
+            )}
+          </Async>
+        </Card>
+
+        <Card title="Monthly transaction volume (CTE + GROUP BY)" className="2xl:col-span-2">
+          <Async state={monthly}>
+            {(rows) => {
+              const months = [...new Set(rows.map((r) => r.month))];
+              const cell = (m: string, t: string) => rows.find((r) => r.month === m && r.txn_type === t);
+              return (
+                <Table headers={['Month', 'Deposits', 'Withdrawals', 'Transfers']}>
+                  {months.length === 0 && <EmptyRow cols={4} />}
+                  {months.map((m) => (
+                    <tr key={m}>
+                      <td className={td}>{m}</td>
+                      {['DEPOSIT', 'WITHDRAWAL', 'TRANSFER'].map((t) => {
+                        const c = cell(m, t);
+                        return <td key={t} className={td}>{c ? `${inr(c.volume)} (${c.count})` : '—'}</td>;
+                      })}
+                    </tr>
+                  ))}
+                </Table>
+              );
+            }}
+          </Async>
+        </Card>
+      </div>
+    </>
   );
 }
