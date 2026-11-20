@@ -1,6 +1,10 @@
 // All raw-SQL data access. API routes never write SQL themselves.
 // NOTE: pg returns NUMERIC / BIGINT as strings (keeps precision). Format on the UI.
+import type { QueryResultRow } from 'pg';
 import { query } from '../client';
+
+// Every write goes through write(): it runs as the signed-in user so triggers can audit WHO did it
+const write = <T extends QueryResultRow = any>(text: string, params: unknown[] = []) => query<T>(text, params, true);
 
 const first = async <T>(p: Promise<T[]>): Promise<T | null> => (await p)[0] ?? null;
 
@@ -32,7 +36,7 @@ export const getCustomer = (id: number) => first(query(`SELECT * FROM customer W
 
 export const createCustomer = (c: { fullName: string; email: string; phone: string; dob: string; address: string | null }) =>
   first(
-    query(
+    write(
       `INSERT INTO customer (full_name, email, phone, dob, address)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [c.fullName, c.email, c.phone, c.dob, c.address]
@@ -45,7 +49,7 @@ export const updateCustomer = (
        address: string | null; kycVerified: boolean | null }
 ) =>
   first(
-    query(
+    write(
       `UPDATE customer SET
          full_name    = COALESCE($2, full_name),
          email        = COALESCE($3, email),
@@ -60,7 +64,7 @@ export const updateCustomer = (
 
 // Fails with a foreign-key error if the customer still has accounts (ON DELETE RESTRICT)
 export const deleteCustomer = (id: number) =>
-  first(query(`DELETE FROM customer WHERE customer_id = $1 RETURNING customer_id`, [id]));
+  first(write(`DELETE FROM customer WHERE customer_id = $1 RETURNING customer_id`, [id]));
 
 // ============================= Accounts ================================
 export const listAccounts = (customerId: number | null) =>
@@ -74,7 +78,7 @@ export const getAccount = (id: number) => first(query(`SELECT * FROM vw_account_
 
 export const openAccount = (customerId: number, branchId: number, type: string) =>
   first(
-    query(
+    write(
       `INSERT INTO account (customer_id, branch_id, account_type)
        VALUES ($1, $2, $3) RETURNING account_id`,
       [customerId, branchId, type]
@@ -82,7 +86,7 @@ export const openAccount = (customerId: number, branchId: number, type: string) 
   ).then((r) => getAccount((r as { account_id: number }).account_id));
 
 export const setAccountStatus = async (id: number, status: string) => {
-  const r = await first(query(`UPDATE account SET status = $2 WHERE account_id = $1 RETURNING account_id`, [id, status]));
+  const r = await first(write(`UPDATE account SET status = $2 WHERE account_id = $1 RETURNING account_id`, [id, status]));
   return r ? getAccount(id) : null;
 };
 
@@ -112,15 +116,16 @@ export const getTransaction = (id: string | number) =>
     )
   );
 
-export const listTransactions = (accountId: number | null, limit: number) =>
+export const listTransactions = (accountId: number | null, limit: number, customerId: number | null = null) =>
   query(
     `SELECT t.*, fa.account_number AS from_account_number, ta.account_number AS to_account_number
      FROM transactions t
      LEFT JOIN account fa ON fa.account_id = t.from_account_id
      LEFT JOIN account ta ON ta.account_id = t.to_account_id
-     WHERE $1::int IS NULL OR t.from_account_id = $1 OR t.to_account_id = $1
+     WHERE ($1::int IS NULL OR t.from_account_id = $1 OR t.to_account_id = $1)
+       AND ($3::int IS NULL OR fa.customer_id = $3 OR ta.customer_id = $3)   -- customers: own accounts only
      ORDER BY t.txn_id DESC LIMIT $2`,
-    [accountId, limit]
+    [accountId, limit, customerId]
   );
 
 // The DB functions do all validation + locking and throw on failure (=> automatic rollback)
@@ -131,40 +136,40 @@ const finish = async (txnId: string, accountIds: number[]) => ({
 
 export const deposit = async (accountId: number, amount: number, desc: string | null) => {
   const r = await first<{ txn_id: string }>(
-    query(`SELECT fn_deposit($1, $2, COALESCE($3::text, 'Cash deposit')) AS txn_id`, [accountId, amount, desc])
+    write(`SELECT fn_deposit($1, $2, COALESCE($3::text, 'Cash deposit')) AS txn_id`, [accountId, amount, desc])
   );
   return finish(r!.txn_id, [accountId]);
 };
 
 export const withdraw = async (accountId: number, amount: number, desc: string | null) => {
   const r = await first<{ txn_id: string }>(
-    query(`SELECT fn_withdraw($1, $2, COALESCE($3::text, 'Cash withdrawal')) AS txn_id`, [accountId, amount, desc])
+    write(`SELECT fn_withdraw($1, $2, COALESCE($3::text, 'Cash withdrawal')) AS txn_id`, [accountId, amount, desc])
   );
   return finish(r!.txn_id, [accountId]);
 };
 
 export const transfer = async (from: number, to: number, amount: number, desc: string | null) => {
   const r = await first<{ txn_id: string }>(
-    query(`SELECT fn_transfer($1, $2, $3, COALESCE($4::text, 'Fund transfer')) AS txn_id`, [from, to, amount, desc])
+    write(`SELECT fn_transfer($1, $2, $3, COALESCE($4::text, 'Fund transfer')) AS txn_id`, [from, to, amount, desc])
   );
   return finish(r!.txn_id, [from, to]);
 };
 
 // =============================== Cards =================================
-export const listCards = (accountId: number | null) =>
+export const listCards = (accountId: number | null, customerId: number | null = null) =>
   query(
     `SELECT c.card_id, c.account_id, a.account_number,
             '************' || right(c.card_number, 4) AS masked_number,
             c.card_type, c.expiry_date, c.status
      FROM card c JOIN account a ON a.account_id = c.account_id
-     WHERE $1::int IS NULL OR c.account_id = $1
+     WHERE ($1::int IS NULL OR c.account_id = $1) AND ($2::int IS NULL OR a.customer_id = $2)
      ORDER BY c.card_id`,
-    [accountId]
+    [accountId, customerId]
   );
 
 export const issueCard = (accountId: number, type: string) =>
   first(
-    query(
+    write(
       `INSERT INTO card (account_id, card_number, card_type, expiry_date)
        VALUES ($1, '4' || lpad(floor(random() * 1e15)::bigint::text, 15, '0'), $2,
                (CURRENT_DATE + INTERVAL '5 years')::date)
@@ -174,7 +179,7 @@ export const issueCard = (accountId: number, type: string) =>
   );
 
 export const setCardStatus = (id: number, status: string) =>
-  first(query(`UPDATE card SET status = $2 WHERE card_id = $1 RETURNING card_id, account_id, card_type, expiry_date, status`, [id, status]));
+  first(write(`UPDATE card SET status = $2 WHERE card_id = $1 RETURNING card_id, account_id, card_type, expiry_date, status`, [id, status]));
 
 // ============================== Loans ==================================
 const LOAN_SELECT = `
@@ -204,23 +209,23 @@ export const calculateEmi = (principal: number, rate: number, months: number) =>
 
 export const applyForLoan = async (customerId: number, accountId: number, principal: number, rate: number, months: number) => {
   const r = await first<{ loan_id: number }>(
-    query(`SELECT fn_apply_for_loan($1, $2, $3, $4, $5) AS loan_id`, [customerId, accountId, principal, rate, months])
+    write(`SELECT fn_apply_for_loan($1, $2, $3, $4, $5) AS loan_id`, [customerId, accountId, principal, rate, months])
   );
   return getLoan(r!.loan_id);
 };
 
 export const approveLoan = async (id: number) => {
-  const r = await first<{ txn_id: string }>(query(`SELECT fn_approve_loan($1) AS txn_id`, [id]));
+  const r = await first<{ txn_id: string }>(write(`SELECT fn_approve_loan($1) AS txn_id`, [id]));
   return { loan: await getLoan(id), disbursal: await getTransaction(r!.txn_id) };
 };
 
 export const rejectLoan = async (id: number) => {
-  await query(`SELECT fn_reject_loan($1)`, [id]);
+  await write(`SELECT fn_reject_loan($1)`, [id]);
   return getLoan(id);
 };
 
 export const payEmi = async (id: number) => {
-  const r = await first<{ txn_id: string }>(query(`SELECT fn_pay_emi($1) AS txn_id`, [id]));
+  const r = await first<{ txn_id: string }>(write(`SELECT fn_pay_emi($1) AS txn_id`, [id]));
   return { loan: await getLoan(id), payment: await getTransaction(r!.txn_id) };
 };
 
@@ -262,4 +267,16 @@ export const auditLog = (table: string | null, operation: string | null, limit: 
   );
 
 export const applyMonthlyInterest = (rate: number) =>
-  first(query(`SELECT fn_apply_monthly_interest($1::numeric) AS accounts_credited`, [rate]));
+  first(write(`SELECT fn_apply_monthly_interest($1::numeric) AS accounts_credited`, [rate]));
+
+// ===================== Ownership lookups (for permission checks) =======
+const ownerOf = async (sql: string, id: number) =>
+  (await first<{ customer_id: number }>(query(sql, [id])))?.customer_id ?? null;
+
+export const accountOwnerId = (id: number) => ownerOf(`SELECT customer_id FROM account WHERE account_id = $1`, id);
+export const loanOwnerId = (id: number) => ownerOf(`SELECT customer_id FROM loan WHERE loan_id = $1`, id);
+export const cardOwnerId = (id: number) =>
+  ownerOf(`SELECT a.customer_id FROM card c JOIN account a ON a.account_id = c.account_id WHERE c.card_id = $1`, id);
+
+export const accountIdByNumber = async (accountNumber: string) =>
+  (await first<{ account_id: number }>(query(`SELECT account_id FROM account WHERE account_number = $1`, [accountNumber])))?.account_id ?? null;

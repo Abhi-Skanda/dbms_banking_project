@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "db:setup": "node --env-file=.env.local pgdb/scripts/setup.mjs", 
-    "db:reset": "node --env-file=.env.local pgdb/scripts/setup.mjs --reset"
+    "db:reset": "node --env-file=.env.local pgdb/scripts/setup.mjs --reset",
+    "db:auth": "node --env-file=.env.local db/scripts/setup.mjs --only=07"
   },
   "dependencies": {
     "next": "16.4.6",

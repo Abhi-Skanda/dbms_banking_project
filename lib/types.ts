@@ -71,3 +71,17 @@ export type BranchSummary = {
 export type TopCustomer = { customer_id: number; full_name: string; accounts: number; total_balance: string; rank: number };
 
 export type MonthlyVolume = { month: string; txn_type: string; count: number; volume: string };
+
+// ---- Authentication ----------------------------------------------------
+export type Role = 'ADMIN' | 'STAFF' | 'CUSTOMER';
+
+export type SessionUser = {
+  userId: number; username: string; role: Role;
+  customerId: number | null; employeeId: number | null; fullName: string;
+};
+
+export type AppUser = {
+  user_id: number; username: string; role: Role; full_name: string; is_active: boolean;
+  locked: boolean; last_login: string | null; created_at: string;
+  customer_id: number | null; employee_id: number | null;
+};

@@ -4,13 +4,17 @@ import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { api } from '@/lib/client';
 import { date } from '@/lib/format';
+import { useAuth } from '@/lib/auth-context';
 import { useAction, useApi, useDebounced } from '@/lib/hooks';
 import type { Customer } from '@/lib/types';
 import { Async, Badge, Button, Card, EmptyRow, Field, Notice, PageHeader, Table, inputCls, td } from '@/components/ui';
+import RequireRole from '@/components/RequireRole';
+import { STAFF_ROLES } from '@/lib/roles';
 
 const empty = { fullName: '', email: '', phone: '', dob: '', address: '' };
 
-export default function CustomersPage() {
+function Customers() {
+  const { user } = useAuth();
   const [search, setSearch] = useState('');
   const q = useDebounced(search, 300);
   const customers = useApi<Customer[]>(`/api/customers${q ? `?search=${encodeURIComponent(q)}` : ''}`);
@@ -94,7 +98,7 @@ export default function CustomersPage() {
                   <td className={td}>
                     <div className="flex flex-wrap gap-2">
                     <Button size="sm" variant="ghost" onClick={() => toggleKyc(c)}>{c.kyc_verified ? 'Unverify' : 'Verify KYC'}</Button>
-                    <Button size="sm" variant="danger" onClick={() => remove(c)}>Delete</Button>
+                    {user?.role === 'ADMIN' && <Button size="sm" variant="danger" onClick={() => remove(c)}>Delete</Button>}
                     </div>
                   </td>
                 </tr>
@@ -104,5 +108,13 @@ export default function CustomersPage() {
         </Async>
       </Card>
     </>
+  );
+}
+
+export default function CustomersPage() {
+  return (
+    <RequireRole roles={STAFF_ROLES}>
+      <Customers />
+    </RequireRole>
   );
 }

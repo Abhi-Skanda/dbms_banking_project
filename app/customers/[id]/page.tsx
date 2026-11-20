@@ -8,8 +8,10 @@ import { date, inr } from '@/lib/format';
 import { useAction, useApi } from '@/lib/hooks';
 import type { Account, Branch, Customer, Loan } from '@/lib/types';
 import { Async, Badge, Button, Card, EmptyRow, Field, Notice, PageHeader, Table, inputCls, td } from '@/components/ui';
+import RequireRole from '@/components/RequireRole';
+import { STAFF_ROLES } from '@/lib/roles';
 
-export default function CustomerDetailPage() {
+function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
   const customer = useApi<Customer & { accounts: Account[] }>(`/api/customers/${id}`);
   const loans = useApi<Loan[]>(`/api/loans?customerId=${id}`);
@@ -105,5 +107,13 @@ export default function CustomerDetailPage() {
         )}
       </Async>
     </>
+  );
+}
+
+export default function CustomerDetailPage() {
+  return (
+    <RequireRole roles={STAFF_ROLES}>
+      <CustomerDetail />
+    </RequireRole>
   );
 }

@@ -1,4 +1,5 @@
 // Tiny fetch wrapper: throws Error(message) using the API's { error } body.
+// A 401 anywhere (expired session) sends the browser to the login page.
 export async function api<T>(url: string, opts?: { method?: string; body?: unknown }): Promise<T> {
   const res = await fetch(url, {
     method: opts?.method ?? 'GET',
@@ -7,6 +8,9 @@ export async function api<T>(url: string, opts?: { method?: string; body?: unkno
     cache: 'no-store',
   });
   const data = await res.json().catch(() => null);
+  if (res.status === 401 && !url.startsWith('/api/auth/') && typeof window !== 'undefined') {
+    window.location.assign('/login');
+  }
   if (!res.ok) throw new Error(data?.error ?? `Request failed (${res.status})`);
   return data as T;
 }

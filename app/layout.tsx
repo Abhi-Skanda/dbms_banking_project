@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import type { ReactNode } from 'react';
-import Sidebar from '@/components/Sidebar';
+import Shell from '@/components/Shell';
+import { AuthProvider } from '@/lib/auth-context';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -12,15 +13,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className="flex min-h-screen flex-col md:flex-row">
+      <body>
         <Suspense fallback={null}>
-          <Sidebar />
+          <AuthProvider>
+            <Shell>{children}</Shell>
+          </AuthProvider>
         </Suspense>
-        <main className="min-w-0 flex-1 p-4 md:p-8">
-          <Suspense fallback={<div className="py-6 text-center text-sm text-slate-400">Loading…</div>}>
-            {children}
-          </Suspense>
-        </main>
       </body>
     </html>
   );

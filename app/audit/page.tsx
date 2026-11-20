@@ -4,6 +4,8 @@ import { dateTime, inr } from '@/lib/format';
 import { useApi } from '@/lib/hooks';
 import type { AuditEntry } from '@/lib/types';
 import { Async, Badge, Card, EmptyRow, Field, PageHeader, Table, inputCls, td } from '@/components/ui';
+import RequireRole from '@/components/RequireRole';
+import { ADMIN_ROLES } from '@/lib/roles';
 
 const show = (v: unknown) => (v === null || v === undefined ? 'null' : String(v));
 
@@ -20,7 +22,7 @@ function describe(a: AuditEntry): string[] {
   return ['Row deleted'];
 }
 
-export default function AuditPage() {
+function Audit() {
   const [table, setTable] = useState('');
   const [operation, setOperation] = useState('');
   const [limit, setLimit] = useState('50');
@@ -32,14 +34,14 @@ export default function AuditPage() {
 
   return (
     <>
-      <PageHeader title="Audit log" subtitle="Filled automatically by database triggers — the app never writes to this table" />
+      <PageHeader title="Audit log" subtitle="Filled automatically by database triggers. The “By” column is the signed-in user who made the change." />
 
       <Card
         action={
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Table">
               <select className={inputCls} value={table} onChange={(e) => setTable(e.target.value)}>
-                <option value="">All</option><option>account</option><option>customer</option><option>loan</option><option>transactions</option>
+                <option value="">All</option><option>account</option><option>customer</option><option>loan</option><option>transactions</option><option>app_user</option>
               </select>
             </Field>
             <Field label="Operation">
@@ -76,5 +78,13 @@ export default function AuditPage() {
         </Async>
       </Card>
     </>
+  );
+}
+
+export default function AuditPage() {
+  return (
+    <RequireRole roles={ADMIN_ROLES}>
+      <Audit />
+    </RequireRole>
   );
 }

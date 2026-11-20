@@ -1,14 +1,19 @@
 'use client';
 import { useState } from 'react';
+import RequireRole from '@/components/RequireRole';
+import { useAuth } from '@/lib/auth-context';
 import { date, inr } from '@/lib/format';
 import { useApi } from '@/lib/hooks';
+import { STAFF_ROLES } from '@/lib/roles';
 import type { BranchSummary, Employee } from '@/lib/types';
 import { Async, Card, EmptyRow, PageHeader, Table, inputCls, td } from '@/components/ui';
 
-export default function BranchesPage() {
+function Branches() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN'; // salaries are admin-only
   const branches = useApi<BranchSummary[]>('/api/reports/branch-summary');
   const [branchId, setBranchId] = useState('');
-  const employees = useApi<Employee[]>(`/api/employees${branchId ? `?branchId=${branchId}` : ''}`);
+  const employees = useApi<Employee[]>(isAdmin ? `/api/employees${branchId ? `?branchId=${branchId}` : ''}` : null);
 
   return (
     <>
@@ -34,33 +39,43 @@ export default function BranchesPage() {
         </Async>
       </Card>
 
-      <Card
-        title="Employees"
-        action={
-          <select className={`${inputCls} !w-52`} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-            <option value="">All branches</option>
-            {branches.data?.map((b) => <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>)}
-          </select>
-        }
-      >
-        <Async state={employees}>
-          {(rows) => (
-            <Table headers={['Name', 'Role', 'Branch', 'Reports to', 'Salary', 'Hired']}>
-              {rows.length === 0 && <EmptyRow cols={6} />}
-              {rows.map((e) => (
-                <tr key={e.employee_id}>
-                  <td className={`${td} font-medium`}>{e.full_name}</td>
-                  <td className={td}>{e.role}</td>
-                  <td className={td}>{e.branch_name}</td>
-                  <td className={td}>{e.manager_name ?? '—'}</td>
-                  <td className={td}>{inr(e.salary)}</td>
-                  <td className={td}>{date(e.hire_date)}</td>
-                </tr>
-              ))}
-            </Table>
-          )}
-        </Async>
-      </Card>
+      {isAdmin && (
+        <Card
+          title="Employees"
+          action={
+            <select className={`${inputCls} !w-52`} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+              <option value="">All branches</option>
+              {branches.data?.map((b) => <option key={b.branch_id} value={b.branch_id}>{b.branch_name}</option>)}
+            </select>
+          }
+        >
+          <Async state={employees}>
+            {(rows) => (
+              <Table headers={['Name', 'Role', 'Branch', 'Reports to', 'Salary', 'Hired']}>
+                {rows.length === 0 && <EmptyRow cols={6} />}
+                {rows.map((e) => (
+                  <tr key={e.employee_id}>
+                    <td className={`${td} font-medium`}>{e.full_name}</td>
+                    <td className={td}>{e.role}</td>
+                    <td className={td}>{e.branch_name}</td>
+                    <td className={td}>{e.manager_name ?? '—'}</td>
+                    <td className={td}>{inr(e.salary)}</td>
+                    <td className={td}>{date(e.hire_date)}</td>
+                  </tr>
+                ))}
+              </Table>
+            )}
+          </Async>
+        </Card>
+      )}
     </>
+  );
+}
+
+export default function BranchesPage() {
+  return (
+    <RequireRole roles={STAFF_ROLES}>
+      <Branches />
+    </RequireRole>
   );
 }

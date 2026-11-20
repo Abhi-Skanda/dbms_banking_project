@@ -121,3 +121,4 @@ export const ACCOUNT_STATUSES = ['ACTIVE', 'FROZEN', 'CLOSED'] as const;
 export const CARD_TYPES = ['DEBIT', 'CREDIT'] as const;
 export const CARD_STATUSES = ['ACTIVE', 'BLOCKED', 'EXPIRED'] as const;
 export const LOAN_STATUSES = ['PENDING', 'ACTIVE', 'CLOSED', 'REJECTED'] as const;
+export const ROLES = ['ADMIN', 'STAFF', 'CUSTOMER'] as const;

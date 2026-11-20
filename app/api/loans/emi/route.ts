@@ -1,4 +1,4 @@
-import { handle, json } from '@/lib/api';
+import { ANY, handle, json } from '@/lib/api';
 import { reqMoney, reqNum } from '@/lib/validate';
 import { calculateEmi } from '@/pgdb/queries/bank';
 
@@ -10,4 +10,4 @@ export const GET = handle(async (req) => {
   const months = reqNum(q, 'months', 1, 360);
   const row = await calculateEmi(principal, rate, Math.floor(months));
   return json({ principal, rate, months, ...row });
-});
+}, ANY);
